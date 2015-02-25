@@ -1,0 +1,20 @@
+$def with (toUser,fromUser,createTime,num,content)
+<xml>
+        <ToUserName><![CDATA[$toUser]]></ToUserName>
+        <FromUserName><![CDATA[$fromUser]]></FromUserName>
+        <CreateTime>$createTime</CreateTime>
+        <MsgType><![CDATA[news]]></MsgType>
+        <ArticleCount>$num</ArticleCount>
+    
+        <Articles>
+        $for tmp in content: 
+            <item>
+            <Title><![CDATA[$tmp['title']]]></Title>
+            <Description><![CDATA[$tmp['descrip']]]></Description>
+            <PicUrl><![CDATA[$tmp['picUrl']]]></PicUrl>
+            <Url><![CDATA[$tmp['hqUrl']]]></Url>
+            </item>
+            
+        </Articles>
+        <FuncFlag>0</FuncFlag>
+</xml>
