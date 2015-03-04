@@ -32,6 +32,48 @@ import random
 
 import re  
 
+import web.db
+import sae.const
+
+
+
+db = web.database(
+    dbn='mysql',
+    host=sae.const.MYSQL_HOST,
+    port=int(sae.const.MYSQL_PORT),
+    user=sae.const.MYSQL_USER,
+    passwd=sae.const.MYSQL_PASS,
+    db=sae.const.MYSQL_DB
+)
+
+
+def updatelocal(member, location_x, location_y):
+    
+    #myvar = dict(name=member)
+    #results =  db.select('location_info', myvar, where="member = $name")
+    
+    
+    results = db.query("SELECT * FROM `location_info` where member = '%s' "%member)
+    
+    
+    if len(results) == 0:
+    
+    	return db.insert('location_info', member=member, location_x=location_x, location_y=location_y)
+    else:
+        return db.update('location_info', where="member = '%s'"%member, location_x=location_x, location_y=location_y)
+    
+  
+def getlocal(member):
+    
+    results = db.query("SELECT * FROM `location_info` where member = '%s' "%member)
+    
+    if len(results) == 0:
+        return 0,0
+    else:
+        tmp = results[0] 
+        return tmp['location_x'],tmp['location_y']
+
+
 
 # 首页
 class hello:
@@ -40,7 +82,7 @@ class hello:
     def GET(self):  
 
         web.header('Content-Type', 'text/html; charset=UTF-8')
-        return '你好，我是侯海涛 ！'
+        return '<h1>你好，我是侯海涛 ！</h1>'
     
     
 
@@ -70,7 +112,6 @@ class test:
     
 # 有道翻译
 def youdao(word):
-
     word = word.encode('utf-8')
     qword =urllib2.quote(word)
     baseurl =r'http://fanyi.youdao.com/openapi.do?keyfrom=share360&key=743803410&type=data&doctype=json&version=1.1&q='
@@ -164,15 +205,35 @@ class WeixinInterface:
 
         toUser=xml.find("ToUserName").text  
         
+
+        
         if msgType == "event":
             mscontent = xml.find("Event").text
             if mscontent == "subscribe":
-                replayText = u'''感谢您关注【分享你我他】\n我是侯叮叮\n我们为您提供本地生活指南，做最好的本地微信平台。\n目前平台功能如下：\n【1】 查天气，如输入：北京天气\n【2】 查公交，如输入：北京 公交 518\n【3】 翻译，如输入：翻译 你好\n【4】 收听音乐，请输入：音乐\n更多内容，敬请期待...'''
+                replayText = u'''感谢您关注【分享你我他】\n我是侯叮叮\n我们为您提供本地生活指南，做最好的本地微信平台。\n目前平台功能如下：\n【1】 查天气，如输入：北京天气\n【2】 查公交，如输入：北京 公交 518\n【3】 翻译，如输入：翻译 你好\n【4】 收听音乐，请输入：音乐 \n【5】 获取附近相关信息，例如输入：周边 饭店\n更多内容，敬请期待...'''
                 return self.render.reply_text(fromUser,toUser,int(time.time()),replayText)
             if mscontent == "unsubscribe":
                 replayText = u'我现在功能还很简单，知道满足不了您的需求，但是我会慢慢改进，欢迎您以后再来'
                 return self.render.reply_text(fromUser,toUser,int(time.time()),replayText)
     
+    
+        # 获取位置
+    	if msgType == "location":
+            
+            Location_X = xml.find("Location_X").text
+            Location_Y = xml.find("Location_Y").text
+            Label = xml.find("Label").text
+            #print "fffff"+Label
+            
+            replayText = u'您的位置： 纬度 ' + Location_X + ";" + u'经度 ' + Location_Y + u"\n具体地址：" + Label
+            
+            updatelocal(fromUser,Location_X,Location_Y)
+            
+            return self.render.reply_text(fromUser,toUser,int(time.time()),replayText)
+            
+            
+   
+
     	
         if msgType == "text":
             content=xml.find("Content").text#获得用户所输入的内容  
@@ -184,6 +245,7 @@ class WeixinInterface:
             reObj1 = re.compile(u'天气')
             reObj2 = re.compile(u'公交')
             reObj3 = re.compile(u'翻译')
+            reObj4 = re.compile(u'周边')
             
             try:
                 
@@ -199,12 +261,69 @@ class WeixinInterface:
                     res = urllib2.urlopen(req)
                     html = res.read()
                     jsonData = json.loads(html)
-                    print jsonData
+                    #print jsonData
                     
                     replayText = u"【" + jsonData['data'][0]['name'] + u"】" + "\n" + jsonData['data'][0]['info'] + "\n\n" + jsonData['data'][0]['stats'] 
                     
                     return self.render.reply_text(fromUser,toUser,int(time.time()),replayText)
                     
+                 
+                # 周边    
+                elif len(reObj4.findall(content)) >  0:
+                    
+                    
+                    tmp = content.split()
+                    
+                    word = tmp[1].encode('utf-8')
+                    qword =urllib2.quote(word)
+                    
+                    
+                    #http://api.map.baidu.com/place/v2/search?q=银行&region=北京&output=json&ak=188cd1fcce2268d056829ef33b7e2e78
+                    #http://api.map.baidu.com/place/v2/search?q=ATM&location=40.043,116.287&output=json&ak=188cd1fcce2268d056829ef33b7e2e78
+                    
+     		
+                    Location_X ,Location_Y = getlocal(fromUser)
+                    
+                    
+                    if Location_X == 0:
+                        
+                        return self.render.reply_text(fromUser,toUser,int(time.time()),u"对不起，获取您的位置失败，请重新发送您的位置进行定位！")
+                
+                    
+                    url = "http://api.map.baidu.com/place/v2/search?q="+qword+"&page_size=7&page_num=0&location="+str(Location_X)+","+str(Location_Y)+"&output=json&ak=188cd1fcce2268d056829ef33b7e2e78&scope=2"
+                    
+                    req = urllib2.Request(url)
+                    res = urllib2.urlopen(req)
+                    html = res.read()
+                    jsonData = json.loads(html)
+                    
+                    
+                    num = 0
+                    content = []
+                    
+                    for tmp in jsonData['results']:
+                        num += 1
+                        
+                        item = {}
+                        item['descrip'] = ""
+                        item['hqUrl'] = ""
+                        item['picUrl'] = ""
+                        title =  u"【"+tmp["name"] + u"】" +"\t "+tmp["address"] 
+                        if num == 1 :
+                            item['title'] = u"【附近的周边信息如下】\n" 
+                            item['picUrl'] = "http://www.scly168.com/TMFile/TripPic/1422_b.jpg"
+                        else:
+                            
+                            if 'detail_url' in tmp["detail_info"]:
+                                #item['hqUrl'] =  tmp["detail_info"]["detail_url"]
+                                item['hqUrl'] =  "http://share360.sinaapp.com/"
+                                
+                            item['title'] = title
+                                
+                                
+                        content.append(item)
+                                
+                    return self.render.reply_news(fromUser,toUser,int(time.time()),num,content) 
                     
                     
                     
@@ -298,7 +417,8 @@ class WeixinInterface:
                     
                     return self.render.reply_text(fromUser,toUser,int(time.time()),u"hi，我是侯叮叮，微信功能还在开发中，暂时没有什么功能，您刚才说的是："+content) 
             
-            except Exception:
+            except Exception,e:
+                print str(e)
                 
                 return self.render.reply_text(fromUser,toUser,int(time.time()),u"hi，我是侯叮叮，对不起，您输入的有误！") 
 
